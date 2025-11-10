@@ -133,6 +133,15 @@ async def create_indexes() -> None:
         await db.topics.create_index([("chapterId", 1), ("order", 1)])
         logger.info("Created indexes on topics collection")
 
+        # Create indexes for questions collection
+        await db.questions.create_index("topicId")
+        await db.questions.create_index("type")
+        await db.questions.create_index("order")
+        await db.questions.create_index("status")
+        await db.questions.create_index([("topicId", 1), ("order", 1)])
+        await db.questions.create_index([("topicId", 1), ("type", 1)])
+        logger.info("Created indexes on questions collection")
+
     except Exception as e:
         logger.error(f"Failed to create indexes: {str(e)}")
         # Don't raise exception - indexes are optimization, not critical for startup

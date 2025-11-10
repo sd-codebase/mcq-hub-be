@@ -10,6 +10,7 @@ from app.modules.items.routes import router as items_router
 from app.modules.subjects.routes import router as subjects_router
 from app.modules.chapters.routes import router as chapters_router
 from app.modules.topics.routes import router as topics_router
+from app.modules.questions.routes import router as questions_router
 
 
 # Create FastAPI app
@@ -28,6 +29,7 @@ app.include_router(items_router, prefix="/items", tags=["Items"])
 app.include_router(subjects_router, prefix="/subjects", tags=["Subjects"])
 app.include_router(chapters_router, prefix="/chapters", tags=["Chapters"])
 app.include_router(topics_router, prefix="/topics", tags=["Topics"])
+app.include_router(questions_router, prefix="/questions", tags=["Questions"])
 
 
 @app.get("/")

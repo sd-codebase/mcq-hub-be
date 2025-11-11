@@ -5,7 +5,14 @@ API routes for Subjects module.
 from typing import List, Optional
 from fastapi import APIRouter, status, Query
 
-from app.modules.subjects.schemas import SubjectCreate, SubjectUpdate, SubjectResponse, SubjectStatus
+from app.modules.subjects.schemas import (
+    SubjectCreate,
+    SubjectUpdate,
+    SubjectResponse,
+    SubjectStatus,
+    HierarchyCreate,
+    HierarchyResponse
+)
 from app.modules.subjects.service import SubjectService
 
 # Create router
@@ -30,6 +37,27 @@ async def create_subject(subject: SubjectCreate):
         DuplicateResourceException: If subject with name or shortName exists
     """
     return await subject_service.create(subject)
+
+
+@router.post("/hierarchy", response_model=HierarchyResponse, status_code=status.HTTP_201_CREATED)
+async def create_subject_hierarchy(hierarchy: HierarchyCreate):
+    """
+    Create a complete subject hierarchy with chapters and topics.
+
+    Creates a subject along with its chapters and topics in a single request.
+    All entities are created with Inactive status by default.
+
+    Args:
+        hierarchy: Hierarchy creation data with subject, chapters (topics), and topics (subtopics)
+
+    Returns:
+        Complete hierarchy with all created entities and their IDs
+
+    Raises:
+        DuplicateResourceException: If subject with name or shortName exists
+        ValidationError: If any validation fails
+    """
+    return await subject_service.create_hierarchy(hierarchy)
 
 
 @router.get("/", response_model=List[SubjectResponse])

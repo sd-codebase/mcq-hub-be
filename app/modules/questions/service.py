@@ -18,8 +18,12 @@ from app.modules.questions.schemas import (
     QuestionUpdate,
     QuestionStatus,
     QuestionType,
-    QuestionUpdateItem
+    QuestionUpdateItem,
+    MCQQuestionCreate,
+    InterviewQuestionCreate,
+    OutputQuestionCreate
 )
+from app.services.gemini_service import GeminiService
 
 
 class QuestionService:
@@ -370,4 +374,118 @@ class QuestionService:
                 resource="Question",
                 identifier=question_id,
                 field="ID"
+            )
+
+    async def generate_ai_questions(self, topic_id: str, question_type: QuestionType) -> Dict[str, Any]:
+        """
+        Generate questions using AI (Google Gemini) and save to database.
+
+        Args:
+            topic_id: Topic ID for which to generate questions
+            question_type: Type of questions to generate (mcq, output, interview)
+
+        Returns:
+            Dictionary with generated count and list of created questions
+
+        Raises:
+            InvalidObjectIdException: If topic_id is not a valid ObjectId
+            ResourceNotFoundException: If topic not found
+            InvalidInputException: If generation or insertion fails
+        """
+        # Verify topic exists
+        if not ObjectId.is_valid(topic_id):
+            raise InvalidObjectIdException(value=topic_id, resource="Topic")
+
+        db = get_database()
+        topic = await db["topics"].find_one({"_id": ObjectId(topic_id)})
+
+        if not topic:
+            raise ResourceNotFoundException(resource="Topic", identifier=topic_id)
+
+        # Get topic details
+        topic_name = topic.get("name", "Unknown Topic")
+
+        # Get chapter details
+        chapter_id = topic.get("chapterId")
+        chapter = await db["chapters"].find_one({"_id": ObjectId(chapter_id)}) if chapter_id else None
+        chapter_name = chapter.get("name", "Unknown Chapter") if chapter else "Unknown Chapter"
+
+        # Get subject details
+        subject_id = chapter.get("subjectId") if chapter else None
+        subject = await db["subjects"].find_one({"_id": ObjectId(subject_id)}) if subject_id else None
+        subject_name = subject.get("name", "Unknown Subject") if subject else "Unknown Subject"
+
+        # Determine count based on question type
+        if question_type == QuestionType.INTERVIEW:
+            count = 2
+        else:  # MCQ or Output
+            count = 5
+
+        # Get next order number for this topic
+        last_question = await db[self.collection_name].find_one(
+            {"topicId": topic_id},
+            sort=[("order", -1)]
+        )
+        start_order = (last_question["order"] + 1) if last_question else 1
+
+        try:
+            # Initialize Gemini service and generate questions
+            gemini_service = GeminiService()
+            ai_questions = gemini_service.generate_questions(
+                topic_name=topic_name,
+                chapter_name=chapter_name,
+                subject_name=subject_name,
+                question_type=question_type.value,
+                count=count
+            )
+
+            # Transform AI response to QuestionCreate objects
+            questions_to_create = []
+            for idx, ai_question in enumerate(ai_questions):
+                question_data = {
+                    "topicId": topic_id,
+                    "type": question_type.value,
+                    "status": QuestionStatus.INACTIVE,
+                    "order": start_order + idx
+                }
+
+                # Add type-specific fields
+                if question_type == QuestionType.MCQ:
+                    question_data.update({
+                        "question": ai_question.get("question", ""),
+                        "options": ai_question.get("options", []),
+                        "correctAnswer": ai_question.get("correctAnswer", 0),
+                        "explanation": ai_question.get("explanation")
+                    })
+                    questions_to_create.append(MCQQuestionCreate(**question_data))
+
+                elif question_type == QuestionType.OUTPUT:
+                    question_data.update({
+                        "question": ai_question.get("question", ""),
+                        "output": ai_question.get("output", ""),
+                        "explanation": ai_question.get("explanation")
+                    })
+                    questions_to_create.append(OutputQuestionCreate(**question_data))
+
+                elif question_type == QuestionType.INTERVIEW:
+                    question_data.update({
+                        "question": ai_question.get("question", ""),
+                        "answer": ai_question.get("answer"),
+                        "explanation": ai_question.get("explanation")
+                    })
+                    questions_to_create.append(InterviewQuestionCreate(**question_data))
+
+            # Use existing bulk_create to insert questions
+            result = await self.bulk_create(questions_to_create)
+
+            # Transform response to match GenerateQuestionsResponse schema
+            return {
+                "generated": result["created"],
+                "questions": result["questions"]
+            }
+
+        except Exception as e:
+            raise InvalidInputException(
+                message=f"Failed to generate questions: {str(e)}",
+                details={"topic_id": topic_id, "question_type": question_type.value}
             )

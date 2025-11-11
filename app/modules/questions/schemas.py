@@ -40,7 +40,7 @@ class MCQQuestionCreate(QuestionBase):
     type: Literal[QuestionType.MCQ] = QuestionType.MCQ
     options: List[str] = Field(..., min_length=2, max_length=10, description="Answer options (minimum 2)")
     correctAnswer: int = Field(..., ge=0, description="Index of correct answer (0-based)")
-    explanation: Optional[str] = Field(None, max_length=1000, description="Explanation for the answer")
+    explanation: Optional[str] = Field(None, max_length=10000, description="Explanation for the answer")
 
     @field_validator('correctAnswer')
     @classmethod
@@ -55,15 +55,15 @@ class MCQQuestionCreate(QuestionBase):
 class InterviewQuestionCreate(QuestionBase):
     """Schema for creating an Interview question."""
     type: Literal[QuestionType.INTERVIEW] = QuestionType.INTERVIEW
-    answer: Optional[str] = Field(None, max_length=5000, description="Sample answer")
-    explanation: Optional[str] = Field(None, max_length=1000, description="Additional explanation")
+    answer: Optional[str] = Field(None, max_length=10000, description="Sample answer")
+    explanation: Optional[str] = Field(None, max_length=10000, description="Additional explanation")
 
 
 class OutputQuestionCreate(QuestionBase):
     """Schema for creating an Output question."""
     type: Literal[QuestionType.OUTPUT] = QuestionType.OUTPUT
-    output: str = Field(..., max_length=2000, description="Expected output")
-    explanation: Optional[str] = Field(None, max_length=1000, description="Explanation for the output")
+    output: str = Field(..., max_length=10000, description="Expected output")
+    explanation: Optional[str] = Field(None, max_length=10000, description="Explanation for the output")
 
 
 # Union type for creation
@@ -78,7 +78,7 @@ class MCQQuestionUpdate(BaseModel):
     question: Optional[str] = Field(None, min_length=3)
     options: Optional[List[str]] = Field(None, min_length=2, max_length=10)
     correctAnswer: Optional[int] = Field(None, ge=0)
-    explanation: Optional[str] = Field(None, max_length=1000)
+    explanation: Optional[str] = Field(None, max_length=10000)
     status: Optional[QuestionStatus] = None
     order: Optional[int] = Field(None, ge=1)
 
@@ -98,8 +98,8 @@ class InterviewQuestionUpdate(BaseModel):
     type: Optional[Literal[QuestionType.INTERVIEW]] = None
     topicId: Optional[str] = None
     question: Optional[str] = Field(None, min_length=3)
-    answer: Optional[str] = Field(None, max_length=5000)
-    explanation: Optional[str] = Field(None, max_length=1000)
+    answer: Optional[str] = Field(None, max_length=10000)
+    explanation: Optional[str] = Field(None, max_length=10000)
     status: Optional[QuestionStatus] = None
     order: Optional[int] = Field(None, ge=1)
 
@@ -109,8 +109,8 @@ class OutputQuestionUpdate(BaseModel):
     type: Optional[Literal[QuestionType.OUTPUT]] = None
     topicId: Optional[str] = None
     question: Optional[str] = Field(None, min_length=3)
-    output: Optional[str] = Field(None, max_length=2000)
-    explanation: Optional[str] = Field(None, max_length=1000)
+    output: Optional[str] = Field(None, max_length=10000)
+    explanation: Optional[str] = Field(None, max_length=10000)
     status: Optional[QuestionStatus] = None
     order: Optional[int] = Field(None, ge=1)
 
@@ -181,3 +181,16 @@ class BulkQuestionUpdateResponse(BaseModel):
     """Response schema for bulk update."""
     updated: int = Field(description="Number of questions updated")
     questions: List[QuestionResponse] = Field(description="List of updated questions")
+
+
+# AI Generation schemas
+class GenerateQuestionsRequest(BaseModel):
+    """Schema for AI question generation request."""
+    topicId: str = Field(..., description="Topic ID for which to generate questions")
+    type: QuestionType = Field(..., description="Type of questions to generate (mcq, output, interview)")
+
+
+class GenerateQuestionsResponse(BaseModel):
+    """Response schema for AI question generation."""
+    generated: int = Field(description="Number of questions generated and saved")
+    questions: List[QuestionResponse] = Field(description="List of generated questions with IDs")

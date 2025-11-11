@@ -13,7 +13,13 @@ from app.core.exceptions import (
     InvalidObjectIdException,
     DuplicateResourceException
 )
-from app.modules.subjects.schemas import SubjectCreate, SubjectUpdate, SubjectStatus
+from app.modules.subjects.schemas import (
+    SubjectCreate,
+    SubjectUpdate,
+    SubjectStatus,
+    HierarchyCreate,
+    generate_shortname
+)
 
 
 class SubjectService:
@@ -59,7 +65,7 @@ class SubjectService:
             DuplicateResourceException: If subject with shortName exists
         """
         db = get_database()
-        query = {"shortName": short_name.upper()}
+        query = {"shortName": short_name}
 
         if exclude_id:
             query["_id"] = {"$ne": ObjectId(exclude_id)}
@@ -69,7 +75,7 @@ class SubjectService:
             raise DuplicateResourceException(
                 resource="Subject",
                 field="shortName",
-                value=short_name.upper()
+                value=short_name
             )
 
     async def create(self, subject_data: SubjectCreate) -> Dict[str, Any]:
@@ -139,12 +145,12 @@ class SubjectService:
             ResourceNotFoundException: If subject not found
         """
         db = get_database()
-        subject = await db[self.collection_name].find_one({"shortName": short_name.upper()})
+        subject = await db[self.collection_name].find_one({"shortName": short_name})
 
         if not subject:
             raise ResourceNotFoundException(
                 resource="Subject",
-                identifier=short_name.upper(),
+                identifier=short_name,
                 field="shortName"
             )
 
@@ -274,3 +280,100 @@ class SubjectService:
                 identifier=subject_id,
                 field="ID"
             )
+
+    async def create_hierarchy(self, hierarchy_data: HierarchyCreate) -> Dict[str, Any]:
+        """
+        Create a complete subject hierarchy with chapters and topics.
+
+        Args:
+            hierarchy_data: Hierarchy creation data
+
+        Returns:
+            Complete hierarchy with all created entities
+
+        Raises:
+            DuplicateResourceException: If subject name/shortName already exists
+            InvalidInputException: If creation fails
+        """
+        db = get_database()
+
+        # Generate shortName from subject name
+        short_name = generate_shortname(hierarchy_data.subject)
+
+        # Check for duplicate subject name and shortName
+        await self._check_duplicate_name(hierarchy_data.subject)
+        await self._check_duplicate_short_name(short_name)
+
+        # Get next order for subject
+        last_subject = await db[self.collection_name].find_one(
+            {},
+            sort=[("order", -1)]
+        )
+        subject_order = (last_subject["order"] + 1) if last_subject else 1
+
+        # Create subject with INACTIVE status
+        subject_dict = {
+            "name": hierarchy_data.subject,
+            "shortName": short_name,
+            "status": "Inactive",
+            "order": subject_order
+        }
+
+        subject_result = await db[self.collection_name].insert_one(subject_dict)
+        subject_id = str(subject_result.inserted_id)
+
+        # Create chapters and topics
+        chapters_response = []
+
+        for chapter_index, chapter_item in enumerate(hierarchy_data.topics):
+            # Create chapter
+            chapter_dict = {
+                "subjectId": subject_id,
+                "name": chapter_item.topic,
+                "status": "Inactive",
+                "order": chapter_index + 1
+            }
+
+            chapter_result = await db["chapters"].insert_one(chapter_dict)
+            chapter_id = str(chapter_result.inserted_id)
+
+            # Create topics for this chapter
+            topics_list = []
+            for topic_index, topic_item in enumerate(chapter_item.subtopics):
+                topic_dict = {
+                    "chapterId": chapter_id,
+                    "name": topic_item.name,
+                    "status": "Inactive",
+                    "order": topic_index + 1
+                }
+
+                topic_result = await db["topics"].insert_one(topic_dict)
+
+                topics_list.append({
+                    "id": str(topic_result.inserted_id),
+                    "chapterId": chapter_id,
+                    "name": topic_item.name,
+                    "status": "Inactive",
+                    "order": topic_index + 1
+                })
+
+            chapters_response.append({
+                "id": chapter_id,
+                "name": chapter_item.topic,
+                "subjectId": subject_id,
+                "status": "Inactive",
+                "order": chapter_index + 1,
+                "topics": topics_list
+            })
+
+        # Return complete hierarchy
+        return {
+            "subject": {
+                "id": subject_id,
+                "name": hierarchy_data.subject,
+                "shortName": short_name,
+                "status": "Inactive",
+                "order": subject_order
+            },
+            "chapters": chapters_response
+        }

@@ -4,7 +4,7 @@ Pydantic schemas for Subjects module.
 
 import re
 from enum import Enum
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from bson import ObjectId
 
@@ -20,7 +20,7 @@ def generate_shortname(name: str) -> str:
     Generate shortName from name if not provided.
 
     Rules:
-    - Keep alphanumeric characters and special chars: $, +, -, _, #
+    - Keep alphanumeric characters and special chars: $, +, -, #
     - Remove all other special characters
     - Replace multiple spaces with single hyphen
     - Convert to lowercase
@@ -31,8 +31,8 @@ def generate_shortname(name: str) -> str:
     Returns:
         Generated short name
     """
-    # Keep only alphanumeric and allowed special chars: $ + - _ #
-    cleaned = re.sub(r'[^a-zA-Z0-9\s$+\-_#]', '', name)
+    # Keep only alphanumeric and allowed special chars: $ + - #
+    cleaned = re.sub(r'[^a-zA-Z0-9\s$+\-#]', '', name)
     # Replace multiple spaces with single space
     cleaned = re.sub(r'\s+', ' ', cleaned)
     # Replace spaces with hyphens
@@ -80,15 +80,15 @@ class SubjectCreate(SubjectBase):
     @model_validator(mode='before')
     @classmethod
     def generate_shortname_if_missing(cls, data: Any) -> Any:
-        """Generate shortName from name if not provided, or uppercase if provided."""
+        """Generate shortName from name if not provided, or format if provided."""
         if isinstance(data, dict):
             # If shortName is not provided or empty, generate it from name
             if not data.get('shortName'):
                 if data.get('name'):
                     data['shortName'] = generate_shortname(data['name'])
             else:
-                # If shortName is provided, convert to uppercase
-                data['shortName'] = data['shortName'].upper()
+                # If shortName is provided, apply formatting rules
+                data['shortName'] = generate_shortname(data['shortName'])
         return data
 
     @field_validator('shortName')
@@ -120,15 +120,15 @@ class SubjectUpdate(BaseModel):
     def handle_shortname_generation(cls, data: Any) -> Any:
         """
         Generate shortName from name if name is being updated but shortName is not provided.
-        If shortName is provided, convert to uppercase.
+        If shortName is provided, apply formatting rules.
         """
         if isinstance(data, dict):
             # If name is being updated but shortName is not provided
             if data.get('name') and 'shortName' not in data:
                 data['shortName'] = generate_shortname(data['name'])
-            # If shortName is explicitly provided (not None), uppercase it
+            # If shortName is explicitly provided (not None), apply formatting
             elif data.get('shortName'):
-                data['shortName'] = data['shortName'].upper()
+                data['shortName'] = generate_shortname(data['shortName'])
         return data
 
     @field_validator('name')
@@ -157,3 +157,37 @@ class SubjectResponse(SubjectBase):
         populate_by_name=True,
         json_encoders={ObjectId: str}
     )
+
+
+# Hierarchy creation schemas
+class SubtopicItem(BaseModel):
+    """Schema for a subtopic (topic) in hierarchy creation."""
+    name: str = Field(..., min_length=3, max_length=200, description="Topic name")
+
+
+class TopicItem(BaseModel):
+    """Schema for a topic (chapter) in hierarchy creation."""
+    topic: str = Field(..., min_length=3, max_length=200, description="Chapter name")
+    subtopics: List[SubtopicItem] = Field(..., min_length=1, description="List of topics under this chapter")
+
+
+class HierarchyCreate(BaseModel):
+    """Schema for creating subject with chapters and topics."""
+    subject: str = Field(..., min_length=3, max_length=100, description="Subject name")
+    topics: List[TopicItem] = Field(..., min_length=1, description="List of chapters with their topics")
+
+
+class ChapterResponseItem(BaseModel):
+    """Chapter data in hierarchy response."""
+    id: str
+    name: str
+    subjectId: str
+    status: str
+    order: int
+    topics: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class HierarchyResponse(BaseModel):
+    """Response schema for hierarchy creation."""
+    subject: SubjectResponse
+    chapters: List[ChapterResponseItem]

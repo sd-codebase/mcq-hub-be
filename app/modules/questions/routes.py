@@ -15,7 +15,9 @@ from app.modules.questions.schemas import (
     BulkQuestionCreate,
     BulkQuestionCreateResponse,
     BulkQuestionUpdate,
-    BulkQuestionUpdateResponse
+    BulkQuestionUpdateResponse,
+    GenerateQuestionsRequest,
+    GenerateQuestionsResponse
 )
 from app.modules.questions.service import QuestionService
 
@@ -69,6 +71,33 @@ async def bulk_create_questions(data: BulkQuestionCreate):
         InvalidInputException: If bulk operation fails
     """
     return await question_service.bulk_create(data.questions)
+
+
+@router.post("/generate", response_model=GenerateQuestionsResponse, status_code=status.HTTP_201_CREATED)
+async def generate_questions(request: GenerateQuestionsRequest):
+    """
+    Generate questions using AI (Google Gemini) for a specific topic.
+
+    Generates questions based on the topic context (subject, chapter, topic names).
+    Question count varies by type:
+    - MCQ: 15 questions with 4 options each
+    - Output: 15 code output questions
+    - Interview: 10 detailed interview questions
+
+    All generated questions are saved with Inactive status and sequential order numbers.
+
+    Args:
+        request: Generation request with topicId and question type
+
+    Returns:
+        Number of generated questions and their data with IDs
+
+    Raises:
+        InvalidObjectIdException: If topicId is invalid
+        ResourceNotFoundException: If topic not found
+        InvalidInputException: If generation or saving fails
+    """
+    return await question_service.generate_ai_questions(request.topicId, request.type)
 
 
 @router.get("/", response_model=List[QuestionResponse])
